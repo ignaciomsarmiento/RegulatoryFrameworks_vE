@@ -40,7 +40,48 @@ labor_server <- function(input, output, session) {
   last_country_selection <- reactiveVal("All")
   last_wage_selection <- reactiveVal("1sm")
   last_single_country <- reactiveVal(NULL)
+  last_compare_mode <- reactiveVal("country")
+  option1_selected(TRUE)
+
+  reset_across_defaults <- function() {
+    ns_variables$country_sel <- "All"
+    ns_variables$order_country <- NULL
+    last_country_selection("All")
+    last_wage_selection("1sm")
+    last_single_country(NULL)
+    selected_group0("all")
+    selected_groupA("total")
+    selected_groupB("1sm")
+    selected_groupC("all_component")
+    selected_groupD("all_bonuses")
+    selected_groupE("pensions")
+    option1_selected(TRUE)
+    updateSelectizeInput(session, ns("mw_selection"), selected = "1sm")
+    updateSelectizeInput(session, ns("country_selection_user"), selected = "All")
+    shinyjs::runjs(sprintf("$('#%s').click();", ns("all")))
+  }
   plotly_font_family <- "National Park, 'Source Sans Pro', -apple-system, BlinkMacSystemFont, sans-serif"
+  component_palette <- c(
+    "Pension" = "#00C1FF",
+    "Health" = "#002244",
+    "Occupational Risk" = "#B9BAB5",
+    "Bonuses and Benefits" = "#335B8E",
+    "Payroll Taxes" = "#726AA8"
+  )
+  component_stack_order <- c(
+    "Pension",
+    "Health",
+    "Occupational Risk",
+    "Bonuses and Benefits",
+    "Payroll Taxes"
+  )
+  component_legend_order <- c(
+    "Bonuses and Benefits",
+    "Pension",
+    "Health",
+    "Occupational Risk",
+    "Payroll Taxes"
+  )
   country_name_map <- c(
     ARG = "Argentina",
     BOL = "Bolivia",
@@ -78,10 +119,18 @@ labor_server <- function(input, output, session) {
     if (is.null(wage_code) || length(wage_code) == 0) {
       return(character(0))
     }
+    wage_code <- wage_code[!is.na(wage_code)]
+    if (length(wage_code) == 0) {
+      return(character(0))
+    }
     paste0(substr(wage_code, 1, nchar(wage_code) - 2), " MW")
   }
   format_wage_phrase <- function(wage_code) {
     if (is.null(wage_code) || length(wage_code) == 0) {
+      return("selected minimum wage levels")
+    }
+    wage_code <- wage_code[!is.na(wage_code)]
+    if (length(wage_code) == 0) {
       return("selected minimum wage levels")
     }
     if (length(wage_code) > 1) {
@@ -375,6 +424,11 @@ labor_server <- function(input, output, session) {
     if (is.null(mode)) {
       return()
     }
+    previous_mode <- last_compare_mode()
+    if (!is.null(previous_mode) && previous_mode == "wage" && mode == "country") {
+      reset_across_defaults()
+      return()
+    }
     if (identical(mode, "wage")) {
       preferred <- "ARG"
       if (!preferred %in% ns_variables$countries) {
@@ -404,6 +458,7 @@ labor_server <- function(input, output, session) {
         ns_variables$order_country <- NULL
       }
     }
+    last_compare_mode(mode)
   })
   
   
@@ -496,11 +551,19 @@ labor_server <- function(input, output, session) {
     if (is.null(wage_codes) || length(wage_codes) == 0) {
       wage_codes <- "1sm"
     }
+    wage_codes <- as.character(wage_codes)
+    wage_codes <- wage_codes[!is.na(wage_codes)]
+    if (length(wage_codes) == 0) {
+      wage_codes <- "1sm"
+    }
     wage_codes <- wage_levels[wage_levels %in% wage_codes]
     if (length(wage_codes) == 0) {
       wage_codes <- "1sm"
     }
     compare_wages <- identical(input$compare_mode, "wage") && length(wage_codes) > 1
+    if (!compare_wages && length(wage_codes) > 1) {
+      wage_codes <- wage_codes[1]
+    }
     # Transform values from "1sm" → "1 MW"
     wage_filter <- format_wage_label(wage_codes)
     panel_order <- function() {
@@ -531,13 +594,16 @@ labor_server <- function(input, output, session) {
       df$country <- df$wage
       df
     }
-    build_multicategory_stack <- function(df, colors, y_axis_title) {
+    build_multicategory_stack <- function(df, colors, y_axis_title,
+                                          stack_order = names(colors),
+                                          legend_order = names(colors),
+                                          legend_traceorder = "normal") {
       df <- df %>%
         filter(!is.na(Type), !is.na(value)) %>%
         mutate(
           Scenario = factor(Scenario, levels = c("Min", "Max")),
           wage = factor(wage, levels = wage_filter),
-          Type = factor(Type, levels = names(colors))
+          Type = factor(Type, levels = stack_order)
         ) %>%
         arrange(Scenario, wage)
 
@@ -552,7 +618,8 @@ labor_server <- function(input, output, session) {
           y = sub$value,
           name = type,
           marker = list(color = colors[[type]]),
-          hoverinfo = "y+name"
+          hoverinfo = "y+name",
+          legendrank = match(type, legend_order)
         )
       }
 
@@ -578,13 +645,65 @@ labor_server <- function(input, output, session) {
             orientation = "h",
             x = 0.5,
             xanchor = "center",
-            y = -0.2
+            y = -0.2,
+            traceorder = legend_traceorder
           )
         )
 
       fig <- apply_plot_font(fig)
       fig <- fig %>% layout(annotations = plot_footer_annotations())
       fig
+    }
+    build_component_subplot <- function(df, show_legend, y_axis_title, legend_order = component_legend_order) {
+      fig <- plot_ly(type = "bar")
+      if (show_legend) {
+        for (type in legend_order) {
+          fig <- fig %>% add_trace(
+            x = NA,
+            y = NA,
+            name = type,
+            marker = list(color = component_palette[[type]]),
+            showlegend = TRUE,
+            legendgroup = type,
+            hoverinfo = "none",
+            visible = "legendonly"
+          )
+        }
+      }
+      for (type in component_stack_order) {
+        sub <- df %>% filter(Type == type)
+        if (nrow(sub) == 0) {
+          next
+        }
+        fig <- fig %>% add_trace(
+          x = ~Scenario,
+          y = ~value,
+          data = sub,
+          name = type,
+          marker = list(color = component_palette[[type]]),
+          showlegend = FALSE,
+          legendgroup = type,
+          hoverinfo = "y+name"
+        )
+      }
+      fig %>%
+        layout(
+          paper_bgcolor = "rgba(0,0,0,0)",
+          plot_bgcolor  = "rgba(0,0,0,0)",
+          xaxis = list(
+            showgrid = FALSE,
+            zeroline = FALSE,
+            showline = FALSE,
+            tickangle = 90
+          ),
+          yaxis = list(
+            title = y_axis_title,
+            showgrid = FALSE,
+            zeroline = FALSE,
+            showline = FALSE
+          ),
+          barmode = "stack"
+        )
     }
 
     if (compare_wages && groupA == "total") {
@@ -683,14 +802,13 @@ labor_server <- function(input, output, session) {
         return(NULL)
       }
 
-      colors <- c(
-        "Pension" = "#00C1FF",
-        "Health" = "#002244",
-        "Occupational Risk" = "#B9BAB5",
-        "Bonuses and Benefits" = "#335B8E",
-        "Payroll Taxes" = "#726AA8"
-      )
-      return(build_multicategory_stack(df, colors, y_axis_title))
+      return(build_multicategory_stack(
+        df,
+        component_palette,
+        y_axis_title,
+        stack_order = component_stack_order,
+        legend_order = component_legend_order
+      ))
     }
 
     if (compare_wages && groupA == "component" && group0 == "bonuses_and_benefits") {
@@ -1380,12 +1498,8 @@ labor_server <- function(input, output, session) {
         
         
         df <- df_long
-        df$Type <- factor(df$payer, levels = c("Bonuses and Benefits","Pension", "Health","Occupational Risk","Payroll Taxes"))
+        df$Type <- factor(df$payer, levels = component_stack_order)
         df$Scenario <- factor(df$group, levels = c("Min", "Max"))
-        
-        colors <- c("Bonuses and Benefits"="#00C1FF","Health"="#002244",
-                    "Occupational Risk"="#B9BAB5","Pension"="#335B8E",
-                    "Payroll Taxes"="#726AA8")
         
         paises <- unique(df$country)
         plot_list <- list()
@@ -1399,37 +1513,20 @@ labor_server <- function(input, output, session) {
           
           show_legend <- i == 1
           
-          p <- plot_ly(
-            data = data_pais,
-            x = ~Scenario,
-            y = ~value,
-            type = "bar",
-            color = ~Type,
-            colors = colors,
-            legendgroup = ~Type,
-            showlegend = show_legend,
-            hoverinfo = "y+name"
+          p <- build_component_subplot(
+            data_pais,
+            show_legend = show_legend,
+            y_axis_title = ifelse(i == 1, y_axis_title, ""),
+            legend_order = component_legend_order
           ) %>%
             layout(
-              paper_bgcolor = "rgba(0,0,0,0)",
-              plot_bgcolor  = "rgba(0,0,0,0)",
-              
               xaxis = list(
                 title = pais,
                 showgrid = FALSE,
                 zeroline = FALSE,
                 showline = FALSE,
                 tickangle = 90
-              ),
-              
-              yaxis = list(
-                title = ifelse(i == 1, y_axis_title, ""),
-                showgrid = FALSE,
-                zeroline = FALSE,
-                showline = FALSE
-              ),
-              
-              barmode = "stack"
+              )
             )
           
           plot_list[[i]] <- p
@@ -1451,7 +1548,8 @@ labor_server <- function(input, output, session) {
               orientation = "h",
               x = 0.5,
               xanchor = "center",
-              y = -0.15
+              y = -0.15,
+              traceorder = "normal"
             ),
             
             margin = list(
@@ -1476,7 +1574,7 @@ labor_server <- function(input, output, session) {
             payer = ifelse(grepl("^st_p", type_by_component), "Pension", 
                            ifelse(grepl("^st_h", type_by_component), "Health",
                                   ifelse(grepl("^st_b", type_by_component), "Bonuses and Benefits",
-                                         ifelse(grepl("^st_or", type_by_component), "Labor Risk","Payroll Taxes")))),
+                                         ifelse(grepl("^st_or", type_by_component), "Occupational Risk","Payroll Taxes")))),
             group = factor(group, levels = c("Min", "Max"))
           )
         
@@ -1488,12 +1586,8 @@ labor_server <- function(input, output, session) {
         
         
         df <- df_long
-        df$Type <- factor(df$payer, levels = c("Pension", "Health","Labor Risk","Bonuses and Benefits","Payroll Taxes"))
+        df$Type <- factor(df$payer, levels = component_stack_order)
         df$Scenario <- factor(df$group, levels = c("Min", "Max"))
-        
-        colors <- c("Pension"="#00C1FF","Health"="#002244",
-                    "Labor Risk"="#B9BAB5","Bonuses and Benefits"="#335B8E",
-                    "Payroll Taxes"="#726AA8")
         
         paises <- unique(df$country)
         plot_list <- list()
@@ -1507,37 +1601,20 @@ labor_server <- function(input, output, session) {
           
           show_legend <- i == 1
           
-          p <- plot_ly(
-            data = data_pais,
-            x = ~Scenario,
-            y = ~value,
-            type = "bar",
-            color = ~Type,
-            colors = colors,
-            legendgroup = ~Type,
-            showlegend = show_legend,
-            hoverinfo = "y+name"
+          p <- build_component_subplot(
+            data_pais,
+            show_legend = show_legend,
+            y_axis_title = ifelse(i == 1, y_axis_title, ""),
+            legend_order = component_legend_order
           ) %>%
             layout(
-              paper_bgcolor = "rgba(0,0,0,0)",
-              plot_bgcolor  = "rgba(0,0,0,0)",
-              
               xaxis = list(
                 title = pais,
                 showgrid = FALSE,
                 zeroline = FALSE,
                 showline = FALSE,
                 tickangle = 90
-              ),
-              
-              yaxis = list(
-                title = ifelse(i == 1, y_axis_title, ""),
-                showgrid = FALSE,
-                zeroline = FALSE,
-                showline = FALSE
-              ),
-              
-              barmode = "stack"
+              )
             )
           
           plot_list[[i]] <- p
@@ -1559,7 +1636,8 @@ labor_server <- function(input, output, session) {
               orientation = "h",
               x = 0.5,
               xanchor = "center",
-              y = -0.15
+              y = -0.15,
+              traceorder = "normal"
             ),
             
             margin = list(
@@ -1592,7 +1670,7 @@ labor_server <- function(input, output, session) {
           payer = ifelse(grepl("^st_p", type_by_component), "Pension", 
                          ifelse(grepl("^st_h", type_by_component), "Health",
                                 ifelse(grepl("^st_b", type_by_component), "Bonuses and Benefits",
-                                       ifelse(grepl("^st_or", type_by_component), "Labor Risk","Payroll Taxes")))),
+                                       ifelse(grepl("^st_or", type_by_component), "Occupational Risk","Payroll Taxes")))),
           group = factor(group, levels = c("Min", "Max"))
         )
       
@@ -1604,12 +1682,8 @@ labor_server <- function(input, output, session) {
       
       
       df <- df_long
-      df$Type <- factor(df$payer, levels = c("Pension", "Health","Labor Risk","Bonuses and Benefits","Payroll Taxes"))
+      df$Type <- factor(df$payer, levels = component_stack_order)
       df$Scenario <- factor(df$group, levels = c("Min", "Max"))
-      
-      colors <- c("Pension"="#00C1FF","Health"="#002244",
-                  "Labor Risk"="#B9BAB5","Bonuses and Benefits"="#335B8E",
-                  "Payroll Taxes"="#726AA8")
       
       paises <- unique(df$country)
       plot_list <- list()
@@ -1621,13 +1695,13 @@ labor_server <- function(input, output, session) {
         
         show_legend <- ifelse(i == 1, TRUE, FALSE)
         
-        p <- plot_ly(data_pais, x = ~Scenario, y = ~value, type = 'bar',
-                     color = ~Type, colors = colors, legendgroup = ~Type,
-                     showlegend = show_legend, text = ~value,
-                     hoverinfo = "text+y+name") %>%
+        p <- build_component_subplot(
+          data_pais,
+          show_legend = show_legend,
+          y_axis_title = ifelse(i == 1, y_axis_title, ""),
+          legend_order = component_legend_order
+        ) %>%
           layout(
-            paper_bgcolor = "rgba(0,0,0,0)",   
-            plot_bgcolor  = "rgba(0,0,0,0)", 
             xaxis = list(
               title = pais,
               showgrid = FALSE,
@@ -1640,8 +1714,7 @@ labor_server <- function(input, output, session) {
               showgrid = FALSE,
               zeroline = FALSE,
               showline = FALSE
-            ),
-            barmode = 'stack'
+            )
           )
         
         plot_list[[i]] <- p
@@ -2805,9 +2878,9 @@ labor_server <- function(input, output, session) {
 
     option_button <- function(id, label, value, title) {
       btn_class <- if (identical(selected_groupA(), value)) {
-        "pill-button active"
+        "pill-button subcomponent-btn active"
       } else {
-        "pill-button"
+        "pill-button subcomponent-btn"
       }
 
       tags$div(
@@ -2838,6 +2911,13 @@ labor_server <- function(input, output, session) {
       return(div(style="visibility:hidden;"))
     }
     else if (group0 == "social" & groupA =="component"){
+      button_class <- function(value) {
+        if (identical(selected_groupE(), value)) {
+          "component-btn active"
+        } else {
+          "component-btn"
+        }
+      }
       
       div(
         class = "horizontal-container",
@@ -2858,19 +2938,19 @@ labor_server <- function(input, output, session) {
           actionButton(
             ns("pensions"),
             "Pension",
-            class = "component-btn"
+            class = button_class("pensions")
           ),
           
           actionButton(
             ns("health"),
             "Health",
-            class = "component-btn"
+            class = button_class("health")
           ),
           
           actionButton(
             ns("occupational_risk"),
             "Occupational Risk",
-            class = "component-btn"
+            class = button_class("occupational_risk")
           )
         )
       )
@@ -2921,6 +3001,13 @@ labor_server <- function(input, output, session) {
       return(div(style="visibility:hidden;"))
     }
     else if (groupC == "bonuses_and_benefits" & groupA =="component") {
+      bonus_class <- function(value) {
+        if (identical(selected_groupD(), value)) {
+          "component-btn active"
+        } else {
+          "component-btn"
+        }
+      }
       div(
         class = "horizontal-container",
         style = "display:flex; align-items:flex-start; justify-content:space-between; width:100%;",
@@ -2941,31 +3028,31 @@ labor_server <- function(input, output, session) {
           actionButton(
             ns("all_bonuses"),
             "All Bonuses",
-            class = "component-btn active"
+            class = bonus_class("all_bonuses")
           ),
           
           actionButton(
             ns("ab"),
             "Annual and other bonuses",
-            class = "component-btn"
+            class = bonus_class("ab")
           ),
           
           actionButton(
             ns("pl"),
             "Paid Leave",
-            class = "component-btn"
+            class = bonus_class("pl")
           ),
           
           actionButton(
             ns("up"),
             "Unemployment Protection",
-            class = "component-btn"
+            class = bonus_class("up")
           ),
           
           actionButton(
             ns("ob"),
             "other bonuses and benefits",
-            class = "component-btn"
+            class = bonus_class("ob")
           )
         )
       )

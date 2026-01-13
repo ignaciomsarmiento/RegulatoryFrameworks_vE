@@ -11,6 +11,9 @@ labor_ui <- function(id) {
       .pill-button:hover {
         opacity: 0.85;
       }
+      .pill-button {
+        font-size: 12px;
+      }
       
       .component-btn.active {
         background-color: #00C1FF !important;
@@ -18,6 +21,12 @@ labor_ui <- function(id) {
       }
       .component-btn:hover {
         opacity: 0.85;
+      }
+      .component-btn {
+        font-size: 9px;
+      }
+      .subcomponent-btn {
+        font-size: 10px;
       }
     ")),
     tags$script(HTML("

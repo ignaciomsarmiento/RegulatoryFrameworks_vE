@@ -67,6 +67,15 @@ shinyServer(function(input, output, session) {
   # NAVIGATION HANDLERS
   # =========================================================================
   
+  observeEvent(input$main_tabs, {
+    if (input$main_tabs == "content" &&
+        is.null(navigation$selected_topic) &&
+        is.null(navigation$selected_country)) {
+      navigation$selected_topic <- "labor"
+      navigation$current_view <- "content"
+    }
+  }, ignoreInit = FALSE)
+  
   observeEvent(input$topic_selected, {
     navigation$selected_topic <- input$topic_selected
     navigation$selected_country <- NULL
