@@ -14,11 +14,7 @@ labor_server <- function(input, output, session) {
   # ============================================================================
   # DATOS: Ahora vienen de global.R (pre-cargados)
   # ============================================================================
-  # ANTES (lento - se ejecutaba por cada usuario):
-  #   tabla <- readRDS("data/non_salary/bonuses_and_benefits_component.rds")
-  #   df_non_salary <- readRDS("data/non_salary/1. total_non_salary_costs.rds")
-  #
-  # AHORA (rápido - solo referencias a datos ya cargados en global.R):
+
   tabla <- DATA_TABLA
   df_non_salary <- DATA_NON_SALARY
   df_non_salary_payer <- DATA_NON_SALARY_PAYER
@@ -35,6 +31,60 @@ labor_server <- function(input, output, session) {
   bonus_palette <- BONUS_PALETTE
   bonus_stack_order <- BONUS_STACK_ORDER
   country_name_map <- COUNTRY_NAME_MAP
+  bonus_hover_source <- DATA_BY_GROUP$bonuses_and_benefits
+  if (is.null(bonus_hover_source)) {
+    bonus_hover_lookup <- data.frame(
+      country = character(0),
+      wage = character(0),
+      group = character(0),
+      Type = character(0),
+      hover_text = character(0),
+      stringsAsFactors = FALSE
+    )
+  } else {
+    bonus_hover_lookup <- bonus_hover_source %>%
+      mutate(
+        group = ifelse(grepl("_min$", min_max_total), "Min", "Max")
+      ) %>%
+      select(
+        country,
+        wage,
+        group,
+        legislation,
+        annual_or_periodic_bonuses,
+        paid_leave,
+        unemployment_protection,
+        other_bonuses
+      ) %>%
+      tidyr::pivot_longer(
+        cols = c(
+          annual_or_periodic_bonuses,
+          paid_leave,
+          unemployment_protection,
+          other_bonuses
+        ),
+        names_to = "Type",
+        values_to = "detail_text"
+      ) %>%
+      mutate(
+        Type = dplyr::recode(
+          Type,
+          annual_or_periodic_bonuses = "Annual and other periodic bonuses",
+          paid_leave = "Paid Leave",
+          unemployment_protection = "Unemployment Protection",
+          other_bonuses = "Other bonuses"
+        ),
+        detail_text = dplyr::coalesce(detail_text, ""),
+        legislation = dplyr::coalesce(legislation, ""),
+        hover_text = dplyr::case_when(
+          detail_text != "" & legislation != "" ~ paste0(detail_text, "<br><br>", legislation),
+          detail_text != "" ~ detail_text,
+          legislation != "" ~ legislation,
+          TRUE ~ ""
+        )
+      ) %>%
+      select(country, wage, group, Type, hover_text)
+  }
   
   # non_salary variables
   ns_variables <- reactiveValues(
@@ -204,8 +254,16 @@ labor_server <- function(input, output, session) {
   }
   
   apply_plot_font <- function(fig) {
+    traces <- fig$x$data
+    idx <- which(vapply(traces, function(tr) is.null(tr$hovertemplate), logical(1)))
+    if (length(idx) > 0) {
+      fig <- plotly::style(
+        fig,
+        hovertemplate = "%{x}<br>%{y:.2f}<extra>%{fullData.name}</extra>",
+        traces = idx
+      )
+    }
     fig %>%
-      plotly::style(hovertemplate = "%{x}<br>%{y:.2f}<extra>%{fullData.name}</extra>") %>%
       layout(
         font = list(family = plotly_font_family),
         title = list(
@@ -551,11 +609,21 @@ labor_server <- function(input, output, session) {
         if (nrow(sub) == 0) {
           next
         }
+        hover_text <- NULL
+        if ("hover_text" %in% names(sub)) {
+          hover_text <- sub$hover_text
+        }
         fig <- fig %>% add_trace(
           x = list(sub$Scenario, sub$wage),
           y = sub$value,
           name = type,
           marker = list(color = colors[[type]]),
+          customdata = hover_text,
+          hovertemplate = if (!is.null(hover_text)) {
+            "%{x}<br>%{y:.2f}<br>%{customdata}<extra>%{fullData.name}</extra>"
+          } else {
+            NULL
+          },
           hoverinfo = "y+name",
           legendrank = match(type, legend_order)
         )
@@ -637,11 +705,17 @@ labor_server <- function(input, output, session) {
         if (nrow(sub) == 0) {
           sub <- data.frame(
             Scenario = factor(c("Min", "Max"), levels = c("Min", "Max")),
-            value = c(0, 0)
+            value = c(0, 0),
+            hover_text = ""
           )
         } else {
           sub$Scenario <- factor(sub$Scenario, levels = c("Min", "Max"))
           sub$value[is.na(sub$value)] <- 0
+          if (!"hover_text" %in% names(sub)) {
+            sub$hover_text <- ""
+          } else {
+            sub$hover_text[is.na(sub$hover_text)] <- ""
+          }
         }
         fig <- fig %>% add_trace(
           x = ~Scenario,
@@ -649,6 +723,8 @@ labor_server <- function(input, output, session) {
           data = sub,
           name = type,
           marker = list(color = bonus_palette[[type]]),
+          customdata = ~hover_text,
+          hovertemplate = "%{x}<br>%{y:.2f}<br>%{customdata}<extra>%{fullData.name}</extra>",
           showlegend = show_legend,
           legendgroup = type,
           legendrank = match(type, legend_order),
@@ -812,7 +888,13 @@ labor_server <- function(input, output, session) {
                                ifelse(component == "up", "Unemployment Protection",
                                       ifelse(component == "ob", "Other bonuses", NA))))
         ) %>%
-        select(wage, Scenario, Type, value)
+        select(country, wage, Scenario, Type, value)
+
+      df <- df %>%
+        left_join(
+          bonus_hover_lookup,
+          by = c("country", "wage", "Scenario" = "group", "Type" = "Type")
+        )
 
       if (nrow(df) == 0) {
         showNotification("No Data for this combination.", type = "error")
@@ -2141,7 +2223,7 @@ labor_server <- function(input, output, session) {
           wage %in% wage_filter
         ) %>%
         apply_wage_panels() %>%
-        select(country, min_max_component,component, value) %>%
+        select(country, wage, min_max_component, component, value) %>%
         mutate(
           group = ifelse(grepl("_min$", min_max_component), "Min", "Max"),
           payer = ifelse(component=="ab", "Annual and other periodic bonuses", 
@@ -2149,6 +2231,12 @@ labor_server <- function(input, output, session) {
                                 ifelse(component=="up", "Unemployment Protection",
                                        ifelse(component=="ob", "Other bonuses",NA)))),
           group = factor(group, levels = c("Min", "Max"))
+        )
+      
+      df_long <- df_long %>%
+        left_join(
+          bonus_hover_lookup,
+          by = c("country", "wage", "group" = "group", "payer" = "Type")
         )
       
       if (length(ns_variables$country_sel) > 1) {
