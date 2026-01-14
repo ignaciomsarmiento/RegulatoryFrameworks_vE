@@ -393,6 +393,26 @@ body {
   }
 }
 
+@media (max-width: 768px) {
+  .landing-new {
+    padding: 24px 20px 56px;
+  }
+
+  .landing-hero {
+    gap: 32px;
+    margin-bottom: 60px;
+  }
+
+  .landing-hero-text {
+    padding-top: 0;
+  }
+
+  .landing-hero-desc {
+    padding-left: 0;
+    margin-top: 24px;
+  }
+}
+
 .landing-hero-text {
   flex: 1;
   min-width: 320px;

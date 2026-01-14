@@ -57,6 +57,14 @@ labor_ui <- function(id) {
       @keyframes spinner-rotate {
         to { transform: rotate(360deg); }
       }
+      @media (max-width: 768px) {
+        .plot-scroll {
+          overflow-x: auto;
+        }
+        .plot-scroll .html-widget {
+          min-width: 900px;
+        }
+      }
     ")),
     tags$script(HTML("
       $(document).on('click', '.topic-page .option1-group .pill-button', function(e) {
@@ -232,7 +240,7 @@ labor_ui <- function(id) {
                  
                  # -------- GRÁFICO --------
                  div(
-                   class = "plot-spinner",
+                   class = "plot-spinner plot-scroll",
                    plotlyOutput(ns("plot"), height = "520px")
                  ),
                  div(
