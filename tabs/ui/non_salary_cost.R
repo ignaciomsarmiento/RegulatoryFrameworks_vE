@@ -132,6 +132,7 @@ labor_ui <- function(id) {
                                        title = "Focus on social security contributions.",
                                        style = "background-color: #e6f4ff; color: #0f3b66; border: 1px solid #0f3b66; border-radius: 20px; padding: 6px 18px; font-weight: 600;")
                         ),
+                        uiOutput(ns("component_buttons")),
                         tags$div(
                           style = "display: flex; flex-direction: column; gap: 4px;",
                           actionButton(ns("payroll"), "PAYROLL TAXES",
@@ -144,8 +145,7 @@ labor_ui <- function(id) {
                     uiOutput(ns("option2_buttons")),
                     tags$div(
                       class = "component-wrapper-fixed",
-                      uiOutput(ns("bonus_buttons")),
-                      uiOutput(ns("component_buttons"))
+                      uiOutput(ns("bonus_buttons"))
                     ),
 
 

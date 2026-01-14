@@ -76,6 +76,22 @@ DATA_BY_COMPONENT <- list(
   )
 )
 
+# Archivos *_payer.rds
+DATA_BY_PAYER <- list(
+  pensions = tryCatch(
+    readRDS("data/non_salary/pensions_payer.rds"),
+    error = function(e) NULL
+  ),
+  health = tryCatch(
+    readRDS("data/non_salary/health_payer.rds"),
+    error = function(e) NULL
+  ),
+  payroll_taxes = tryCatch(
+    readRDS("data/non_salary/payroll_taxes_payer.rds"),
+    error = function(e) NULL
+  )
+)
+
 # -----------------------------------------------------------------------------
 # 3. TABLAS DE EXCEL (el cuello de botella más grande)
 # -----------------------------------------------------------------------------
@@ -253,6 +269,11 @@ get_group_data <- function(group_name) {
 #' Obtener datos de componente (reemplaza readRDS dinámico)
 get_component_data <- function(component_name) {
   DATA_BY_COMPONENT[[component_name]]
+}
+
+#' Obtener datos por payer (reemplaza readRDS dinámico)
+get_payer_data <- function(payer_name) {
+  DATA_BY_PAYER[[payer_name]]
 }
 
 #' Obtener tabla de Excel (reemplaza read_excel dinámico)
