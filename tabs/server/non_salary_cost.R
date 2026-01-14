@@ -82,6 +82,18 @@ labor_server <- function(input, output, session) {
     "Occupational Risk",
     "Payroll Taxes"
   )
+  bonus_palette <- c(
+    "Annual and other periodic bonuses" = "#002244",
+    "Paid Leave" = "#8EA2BF",
+    "Unemployment Protection" = "#B9BAB5",
+    "Other bonuses" = "#6F6779"
+  )
+  bonus_stack_order <- c(
+    "Annual and other periodic bonuses",
+    "Paid Leave",
+    "Unemployment Protection",
+    "Other bonuses"
+  )
   country_name_map <- c(
     ARG = "Argentina",
     BOL = "Bolivia",
@@ -154,6 +166,12 @@ labor_server <- function(input, output, session) {
     }
     paste(wage_word, "minimum wages")
   }
+  safe_value <- function(value, fallback) {
+    if (is.null(value) || length(value) == 0) {
+      return(fallback)
+    }
+    value
+  }
   format_country_phrase <- function(countries) {
     if (is.null(countries) || length(countries) == 0 || "All" %in% countries) {
       return("across countries")
@@ -164,12 +182,17 @@ labor_server <- function(input, output, session) {
     "across selected countries"
   }
   plot_title_text <- function() {
+    group0 <- safe_value(selected_group0(), "all")
+    groupA <- safe_value(selected_groupA(), "total")
+    groupD <- safe_value(selected_groupD(), "all_bonuses")
+    groupE <- safe_value(selected_groupE(), "pensions")
+
     subject <- switch(
-      selected_group0(),
+      group0,
       all = "Non-salary labor costs",
       bonuses_and_benefits = "Bonuses and benefits",
       social = switch(
-        selected_groupE(),
+        groupE,
         pensions = "Pension contributions",
         health = "Health contributions",
         occupational_risk = "Occupational risk contributions",
@@ -179,9 +202,9 @@ labor_server <- function(input, output, session) {
       "Non-salary labor costs"
     )
 
-    if (selected_group0() == "bonuses_and_benefits" && selected_groupA() == "component") {
+    if (group0 == "bonuses_and_benefits" && groupA == "component") {
       subject <- switch(
-        selected_groupD(),
+        groupD,
         all_bonuses = "Bonuses and benefits",
         ab = "Annual and other bonuses",
         pl = "Paid leave",
@@ -192,12 +215,12 @@ labor_server <- function(input, output, session) {
     }
 
     view_phrase <- ""
-    if (selected_groupA() == "payer") {
+    if (groupA == "payer") {
       view_phrase <- " by payer"
-    } else if (selected_groupA() == "component") {
-      if (selected_group0() == "all") {
+    } else if (groupA == "component") {
+      if (group0 == "all") {
         view_phrase <- " by component"
-      } else if (selected_group0() == "bonuses_and_benefits" && selected_groupD() == "all_bonuses") {
+      } else if (group0 == "bonuses_and_benefits" && groupD == "all_bonuses") {
         view_phrase <- " by component"
       }
     }
@@ -216,13 +239,13 @@ labor_server <- function(input, output, session) {
     )
   }
   y_axis_title_text <- function() {
-    group0 <- selected_group0()
+    group0 <- safe_value(selected_group0(), "all")
 
     if (group0 == "bonuses_and_benefits") {
       return("Bonuses and benefits as share of wages (%)")
     }
     if (group0 == "social") {
-      groupE <- selected_groupE()
+      groupE <- safe_value(selected_groupE(), "pensions")
       if (groupE == "pensions") {
         return("Pension contribution as share of wages (%)")
       }
@@ -287,7 +310,7 @@ labor_server <- function(input, output, session) {
   
   output$country_selection <- renderUI({
     mode <- input$compare_mode
-    if (is.null(mode)) {
+    if (is.null(mode) || length(mode) == 0) {
       mode <- "country"
     }
     choices <- ns_variables$countries
@@ -320,7 +343,7 @@ labor_server <- function(input, output, session) {
 
   output$mw_selection_ui <- renderUI({
     mode <- input$compare_mode
-    if (is.null(mode)) {
+    if (is.null(mode) || length(mode) == 0) {
       mode <- "country"
     }
     allow_multiple <- identical(mode, "wage")
@@ -377,7 +400,7 @@ labor_server <- function(input, output, session) {
     }
 
     mode <- input$compare_mode
-    if (is.null(mode)) {
+    if (is.null(mode) || length(mode) == 0) {
       mode <- "country"
     }
     if (identical(mode, "wage")) {
@@ -423,11 +446,11 @@ labor_server <- function(input, output, session) {
 
   observeEvent(input$compare_mode, {
     mode <- input$compare_mode
-    if (is.null(mode)) {
+    if (is.null(mode) || length(mode) == 0) {
       return()
     }
     previous_mode <- last_compare_mode()
-    if (!is.null(previous_mode) && previous_mode == "wage" && mode == "country") {
+    if (identical(previous_mode, "wage") && identical(mode, "country")) {
       reset_across_defaults()
       return()
     }
@@ -529,6 +552,7 @@ labor_server <- function(input, output, session) {
   observeEvent(input$occupational_risk, { selected_groupE("occupational_risk") })
   
   # ---- Bonuses and Benefits ----
+  observeEvent(input$all_bonuses,  { selected_groupD("all_bonuses") })
   observeEvent(input$ab,  { selected_groupD("ab") })
   observeEvent(input$pl,  { selected_groupD("pl") })
   observeEvent(input$ob,  { selected_groupD("ob") })
@@ -542,12 +566,19 @@ labor_server <- function(input, output, session) {
     req(selected_groupB())
     
     # Results from user click
-    group0 <- selected_group0()
-    groupA <- selected_groupA()
-    groupB <- selected_groupB()
-    groupC <- selected_groupC()
-    groupD <- selected_groupD()
-    groupE <- selected_groupE()
+    group0 <- safe_value(selected_group0(), "all")
+    groupA <- safe_value(selected_groupA(), "total")
+    groupB <- safe_value(selected_groupB(), "1sm")
+    groupC <- safe_value(selected_groupC(), "all_component")
+    groupD <- safe_value(selected_groupD(), "all_bonuses")
+    groupE <- safe_value(selected_groupE(), "pensions")
+    
+    country_sel <- ns_variables$country_sel
+    if (is.null(country_sel) || length(country_sel) == 0) {
+      country_sel <- "All"
+      ns_variables$country_sel <- country_sel
+      last_country_selection(country_sel)
+    }
     
     wage_codes <- groupB
     if (is.null(wage_codes) || length(wage_codes) == 0) {
@@ -669,6 +700,50 @@ labor_server <- function(input, output, session) {
           data = sub,
           name = type,
           marker = list(color = component_palette[[type]]),
+          showlegend = show_legend,
+          legendgroup = type,
+          legendrank = match(type, legend_order),
+          hoverinfo = "y+name"
+        )
+      }
+      fig %>%
+        layout(
+          paper_bgcolor = "rgba(0,0,0,0)",
+          plot_bgcolor  = "rgba(0,0,0,0)",
+          xaxis = list(
+            showgrid = FALSE,
+            zeroline = FALSE,
+            showline = FALSE,
+            tickangle = 90
+          ),
+          yaxis = list(
+            title = y_axis_title,
+            showgrid = FALSE,
+            zeroline = FALSE,
+            showline = FALSE
+          ),
+          barmode = "stack"
+        )
+    }
+    build_bonus_subplot <- function(df, show_legend, y_axis_title, legend_order = bonus_stack_order) {
+      fig <- plot_ly(type = "bar")
+      for (type in bonus_stack_order) {
+        sub <- df %>% filter(Type == type)
+        if (nrow(sub) == 0) {
+          sub <- data.frame(
+            Scenario = factor(c("Min", "Max"), levels = c("Min", "Max")),
+            value = c(0, 0)
+          )
+        } else {
+          sub$Scenario <- factor(sub$Scenario, levels = c("Min", "Max"))
+          sub$value[is.na(sub$value)] <- 0
+        }
+        fig <- fig %>% add_trace(
+          x = ~Scenario,
+          y = ~value,
+          data = sub,
+          name = type,
+          marker = list(color = bonus_palette[[type]]),
           showlegend = show_legend,
           legendgroup = type,
           legendrank = match(type, legend_order),
@@ -2123,238 +2198,115 @@ labor_server <- function(input, output, session) {
     
     # ---- bonuses and benefits and Components ----
     
-    if ((group0=="bonuses_and_benefits") & groupA == "component" & length(ns_variables$country_sel)==1) {
+    if ((group0=="bonuses_and_benefits") & groupA == "component" & groupD == "all_bonuses") {
+      path_component=paste0("data/non_salary/",paste0(group0,"_component.rds"))
+      df=readRDS(path_component)
+      df_long <- df  %>%
+        filter(
+          wage %in% wage_filter
+        ) %>%
+        apply_wage_panels() %>%
+        select(country, min_max_component,component, value) %>%
+        mutate(
+          group = ifelse(grepl("_min$", min_max_component), "Min", "Max"),
+          payer = ifelse(component=="ab", "Annual and other periodic bonuses", 
+                         ifelse(component=="pl", "Paid Leave",
+                                ifelse(component=="up", "Unemployment Protection",
+                                       ifelse(component=="ob", "Other bonuses",NA)))),
+          group = factor(group, levels = c("Min", "Max"))
+        )
       
-      if(ns_variables$country_sel=="All"){
-        
-        path_component=paste0("data/non_salary/",paste0(group0,"_component.rds"))
-        df=readRDS(path_component)
-        df_long <- df  %>%
-          filter(
-            wage %in% wage_filter
-          ) %>%
-          apply_wage_panels() %>%
-          select(country, min_max_component,component, value) %>%
-          mutate(
-            group = ifelse(grepl("_min$", min_max_component), "Min", "Max"),
-            payer = ifelse(component=="ab", "Annual and other periodic bonuses", 
-                           ifelse(component=="pl", "Paid Leave",
-                                  ifelse(component=="up", "Unemployment Protection",
-                                         ifelse(component=="ob", "Other bonuses",NA)))),
-            group = factor(group, levels = c("Min", "Max"))
-          )
-        
-        df_long <- df_long %>%
-          mutate(country = factor(country, levels = panel_order())) %>% 
-          arrange(country)
-        
-        if (nrow(df_long) == 0) {
-          showNotification("No Data for this combination.", type = "error")
+      if (length(ns_variables$country_sel) > 1) {
+        if ("All" %in%  ns_variables$country_sel) {
+          showNotification("Please select only countries.", type = "error")
           return(NULL)
         }
-        
-        
-        df <- df_long
-        df$Type <- factor(df$payer, levels = c("Annual and other periodic bonuses","Paid Leave", 
-                                               "Unemployment Protection","Other bonuses"))
-        df$Scenario <- factor(df$group, levels = c("Min", "Max"))
-        
-        colors <- c("Annual and other periodic bonuses"="#002244","Paid Leave"="#8EA2BF",
-                    "Unemployment Protection"="#B9BAB5","Other bonuses"="#6F6779")
-        
-        paises <- unique(df$country)
-        plot_list <- list()
-        
-        for (i in seq_along(paises)) {
-          
-          pais <- paises[i]
-          data_pais <- df %>% filter(country == pais)
-          
-          if (nrow(data_pais) == 0) next
-          
-          show_legend <- i == 1
-          
-          p <- plot_ly(
-            data = data_pais,
-            x = ~Scenario,
-            y = ~value,
-            type = "bar",
-            color = ~Type,
-            colors = colors,
-            legendgroup = ~Type,
-            showlegend = show_legend,
-            hoverinfo = "y+name"
-          ) %>%
-            layout(
-              paper_bgcolor = "rgba(0,0,0,0)",
-              plot_bgcolor  = "rgba(0,0,0,0)",
-              
-              xaxis = list(
-                title = pais,
-                showgrid = FALSE,
-                zeroline = FALSE,
-                showline = FALSE,
-                tickangle = 90
-              ),
-              
-              yaxis = list(
-                title = ifelse(i == 1, y_axis_title, ""),
-                showgrid = FALSE,
-                zeroline = FALSE,
-                showline = FALSE
-              ),
-              
-              barmode = "stack"
-            )
-          
-          plot_list[[i]] <- p
-        }
-        
-        n_plots <- length(plot_list)
-        fig <- subplot(
-          plot_list,
-          nrows = 1,
-          shareY = TRUE,
-          titleX = TRUE,
-          widths = rep(1 / n_plots, n_plots), 
-          margin = 0.01
-        ) %>%
-          layout(
-            title = "",
-            
-            legend = list(
-              orientation = "h",
-              x = 0.5,
-              xanchor = "center",
-              y = -0.15
-            ),
-            
-            margin = list(
-              l = 70,
-              r = 30,
-              b = 110,
-              t = 20
-            )
-          )
-        return(apply_plot_font(fig))
-       
-      }
-      else{
-        path_component=paste0("data/non_salary/",paste0(group0,"_component.rds"))
-        df=readRDS(path_component)
-        df_long <- df  %>%
-          filter(
-            wage %in% wage_filter,
-            country==ns_variables$country_sel
-          ) %>%
-          apply_wage_panels() %>%
-          select(country, min_max_component,component, value) %>%
-          mutate(
-            group = ifelse(grepl("_min$", min_max_component), "Min", "Max"),
-            payer = ifelse(component=="ab", "Annual and other periodic bonuses", 
-                           ifelse(component=="pl", "Paid Leave",
-                                  ifelse(component=="up", "Unemployment Protection",
-                                         ifelse(component=="ob", "Other bonuses",NA)))),
-            group = factor(group, levels = c("Min", "Max"))
-          )
-        
-        df_long <- df_long %>%
-          mutate(country = factor(country, levels = panel_order())) %>% 
-          arrange(country)
-        
-        if (nrow(df_long) == 0) {
-          showNotification("No Data for this combination.", type = "error")
-          return(NULL)
-        }
-        
-        
-        df <- df_long
-        df$Type <- factor(df$payer, levels = c("Annual and other periodic bonuses","Paid Leave", 
-                                               "Unemployment Protection","Other bonuses"))
-        df$Scenario <- factor(df$group, levels = c("Min", "Max"))
-        
-        colors <- c("Annual and other periodic bonuses"="#002244","Paid Leave"="#8EA2BF",
-                    "Unemployment Protection"="#B9BAB5","Other bonuses"="#6F6779")
-        
-        paises <- unique(df$country)
-        
-        
-        plot_list <- list()
-        
-        for (i in seq_along(paises)) {
-          
-          pais <- paises[i]
-          data_pais <- df %>% filter(country == pais)
-          
-          if (nrow(data_pais) == 0) next
-          
-          show_legend <- i == 5
-          
-          p <- plot_ly(
-            data = data_pais,
-            x = ~Scenario,
-            y = ~value,
-            type = "bar",
-            color = ~Type,
-            colors = colors,
-            legendgroup = ~Type,
-            showlegend = show_legend,
-            hoverinfo = "y+name"
-          ) %>%
-            layout(
-              paper_bgcolor = "rgba(0,0,0,0)",
-              plot_bgcolor  = "rgba(0,0,0,0)",
-              
-              xaxis = list(
-                title = pais,
-                showgrid = FALSE,
-                zeroline = FALSE,
-                showline = FALSE,
-                tickangle = 90
-              ),
-              
-              yaxis = list(
-                title = ifelse(i == 1, y_axis_title, ""),
-                showgrid = FALSE,
-                zeroline = FALSE,
-                showline = FALSE
-              ),
-              
-              barmode = "stack"
-            )
-          
-          plot_list[[i]] <- p
-        }
-        
-        n_plots <- length(plot_list)
-        fig <- subplot(
-          plot_list,
-          nrows = 1,
-          shareY = TRUE,
-          titleX = TRUE,
-          widths = rep(1 / n_plots, n_plots), 
-          margin = 0.01
-        ) %>%
-          layout(
-            title = "",
-            
-            legend = list(
-              orientation = "h",
-              x = 0.5,
-              xanchor = "center",
-              y = -0.15
-            ),
-            
-            margin = list(
-              l = 70,
-              r = 30,
-              b = 110,
-              t = 20
-            )
-          )
-        return(apply_plot_font(fig))
+        df_long <- df_long %>% filter(country %in% ns_variables$country_sel)
+      } else if (length(ns_variables$country_sel) == 1 && ns_variables$country_sel != "All") {
+        df_long <- df_long %>% filter(country == ns_variables$country_sel)
+      } else {
+        ns_variables$countries=c("All",unique(df$country))
       }
       
+      country_levels <- panel_order()
+      if (is.null(country_levels) || length(country_levels) == 0) {
+        country_levels <- unique(df_long$country)
+      }
+      df_long <- df_long %>%
+        mutate(country = factor(country, levels = country_levels)) %>% 
+        arrange(country)
+      
+      if (nrow(df_long) == 0) {
+        showNotification("No Data for this combination.", type = "error")
+        return(NULL)
+      }
+      
+      df <- df_long
+      df$Type <- factor(df$payer, levels = bonus_stack_order)
+      df$Scenario <- factor(df$group, levels = c("Min", "Max"))
+      
+      paises <- unique(df$country)
+      plot_list <- list()
+      
+      for (i in seq_along(paises)) {
+        pais <- paises[i]
+        data_pais <- df %>% filter(country == pais)
+        
+        if (nrow(data_pais) == 0) next
+        
+        show_legend <- i == 1
+        
+        p <- build_bonus_subplot(
+          data_pais,
+          show_legend = show_legend,
+          y_axis_title = ifelse(i == 1, y_axis_title, "")
+        ) %>%
+          layout(
+            xaxis = list(
+              title = pais,
+              showgrid = FALSE,
+              zeroline = FALSE,
+              showline = FALSE,
+              tickangle = 90
+            ),
+            yaxis = list(
+              title = ifelse(i == 1, y_axis_title, ""),
+              showgrid = FALSE,
+              zeroline = FALSE,
+              showline = FALSE
+            )
+          )
+        
+        plot_list[[i]] <- p
+      }
+      
+      n_plots <- length(plot_list)
+      fig <- subplot(
+        plot_list,
+        nrows = 1,
+        shareY = TRUE,
+        titleX = TRUE,
+        widths = rep(1 / n_plots, n_plots), 
+        margin = 0.01
+      ) %>%
+        layout(
+          title = "",
+          
+          legend = list(
+            orientation = "h",
+            x = 0.5,
+            xanchor = "center",
+            y = -0.15
+          ),
+          
+          margin = list(
+            l = 70,
+            r = 30,
+            b = 110,
+            t = 20
+          )
+        )
+      return(apply_plot_font(fig))
     }
     if (groupA == "component" & groupC!="all_component" & length(ns_variables$country_sel)==1) {
       
@@ -2373,8 +2325,7 @@ labor_server <- function(input, output, session) {
               type = ifelse(grepl("_min$", min_max_component), "Min", "Max")
             )
           ns_variables$countries=c("All",unique(df$country))
-        }
-        if(groupC=="social"){
+        } else if(groupC=="social"){
           path_component=paste0("data/non_salary/",paste0(groupE,"_all.rds"))
           df=readRDS(path_component)
           df <- df %>%
@@ -2387,9 +2338,9 @@ labor_server <- function(input, output, session) {
               type = ifelse(grepl("_min$", min_max_total), "Min", "Max")
             )
           ns_variables$countries=c("All",unique(df$country))
-        }
-        else{
-          if(input$component_type=="Total"){
+        } else if (!is.null(input$component_type) &&
+                   length(input$component_type) > 0 &&
+                   identical(input$component_type, "Total")){
             path_component=paste0("data/non_salary/",paste0(groupC,"_all.rds"))
             df=readRDS(path_component)
             df <- df %>%
@@ -2402,7 +2353,6 @@ labor_server <- function(input, output, session) {
                 type = ifelse(grepl("_min$", min_max_total), "Min", "Max")
               )
             ns_variables$countries=c("All",unique(df$country))
-          }
         }
         
         if (nrow(df) == 0) {
@@ -2508,8 +2458,7 @@ labor_server <- function(input, output, session) {
             mutate(
               type = ifelse(grepl("_min$", min_max_component), "Min", "Max")
             )
-        }
-        if(groupC=="social"){
+        } else if(groupC=="social"){
           path_component=paste0("data/non_salary/",paste0(groupE,"_all.rds"))
           df=readRDS(path_component)
           df <- df %>%
@@ -2522,9 +2471,9 @@ labor_server <- function(input, output, session) {
             mutate(
               type = ifelse(grepl("_min$", min_max_total), "Min", "Max")
             )
-        }
-        else{
-          if(input$component_type=="Total"){
+        } else if (!is.null(input$component_type) &&
+                   length(input$component_type) > 0 &&
+                   identical(input$component_type, "Total")){
             path_component=paste0("data/non_salary/",paste0(groupC,"_all.rds"))
             df=readRDS(path_component)
             df <- df %>%
@@ -2537,7 +2486,6 @@ labor_server <- function(input, output, session) {
               mutate(
                 type = ifelse(grepl("_min$", min_max_total), "Min", "Max")
               )
-          }
         }
         if (nrow(df) == 0) {
           showNotification("No Data for this combination.", type = "error")
@@ -2650,8 +2598,7 @@ labor_server <- function(input, output, session) {
           mutate(
             type = ifelse(grepl("_min$", min_max_component), "Min", "Max")
           )
-      }
-      if(groupC=="social"){
+      } else if(groupC=="social"){
         path_component=paste0("data/non_salary/",paste0(groupE,"_component.rds"))
         df=readRDS(path_component)
         df <- df %>%
@@ -2665,9 +2612,9 @@ labor_server <- function(input, output, session) {
           mutate(
             type = ifelse(grepl("_min$", min_max_component), "Min", "Max")
           )
-      }
-      else{
-        if(input$component_type=="Total"){
+      } else if (!is.null(input$component_type) &&
+                 length(input$component_type) > 0 &&
+                 identical(input$component_type, "Total")){
           path_component=paste0("data/non_salary/",paste0(groupC,"_all.rds"))
           df=readRDS(path_component)
           df <- df %>%
@@ -2680,7 +2627,6 @@ labor_server <- function(input, output, session) {
             mutate(
               type = ifelse(grepl("_min$", min_max_total), "Min", "Max")
             )
-        }
       }
       if (nrow(df) == 0) {
         showNotification("No Data for this combination.", type = "error")
@@ -2778,12 +2724,15 @@ labor_server <- function(input, output, session) {
     table_visible(FALSE)
     ns_variables$df_final_tabla <- NULL
 
-    groupA <- selected_groupA()
-    groupC <- selected_groupC()
-    groupD <- selected_groupD()
-    groupE <- selected_groupE()
+    groupA <- safe_value(selected_groupA(), "total")
+    groupC <- safe_value(selected_groupC(), "all_component")
+    groupD <- safe_value(selected_groupD(), "all_bonuses")
+    groupE <- safe_value(selected_groupE(), "pensions")
     
     con_sel=ns_variables$country_sel
+    if (is.null(con_sel) || length(con_sel) == 0) {
+      con_sel <- "All"
+    }
     if(groupA!= "component" ) return()
     else{
       data <- NULL
