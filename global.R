@@ -61,19 +61,19 @@ DATA_BY_COMPONENT <- list(
   bonuses_and_benefits = tryCatch(
     readRDS("data/non_salary/bonuses_and_benefits_component.rds"),
     error = function(e) NULL
-  ),
-  pensions = tryCatch(
-    readRDS("data/non_salary/pensions_component.rds"),
-    error = function(e) NULL
-  ),
-  health = tryCatch(
-    readRDS("data/non_salary/health_component.rds"),
-    error = function(e) NULL
-  ),
-  occupational_risk = tryCatch(
-    readRDS("data/non_salary/occupational_risk_component.rds"),
-    error = function(e) NULL
-  )
+  )#,
+  # pensions = tryCatch(
+  #   readRDS("data/non_salary/pensions_component.rds"),
+  #   error = function(e) NULL
+  # ),
+  # health = tryCatch(
+  #   readRDS("data/non_salary/health_component.rds"),
+  #   error = function(e) NULL
+  # ),
+  # occupational_risk = tryCatch(
+  #   readRDS("data/non_salary/occupational_risk_component.rds"),
+  #   error = function(e) NULL
+  # )
 )
 
 # Archivos *_payer.rds
