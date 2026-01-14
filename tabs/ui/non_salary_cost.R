@@ -28,6 +28,35 @@ labor_ui <- function(id) {
       .component-btn {
         font-size: 9px;
       }
+      .plot-spinner .shiny-bound-output.recalculating {
+        position: relative;
+        opacity: 0.6;
+      }
+      .plot-spinner .shiny-bound-output.recalculating:before {
+        content: \"\";
+        position: absolute;
+        inset: 0;
+        background: rgba(255, 255, 255, 0.6);
+        z-index: 10;
+      }
+      .plot-spinner .shiny-bound-output.recalculating:after {
+        content: \"\";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 32px;
+        height: 32px;
+        margin-top: -16px;
+        margin-left: -16px;
+        border-radius: 50%;
+        border: 3px solid #cfd8dc;
+        border-top-color: #00C1FF;
+        animation: spinner-rotate 0.8s linear infinite;
+        z-index: 11;
+      }
+      @keyframes spinner-rotate {
+        to { transform: rotate(360deg); }
+      }
     ")),
     tags$script(HTML("
       $(document).on('click', '.topic-page .option1-group .pill-button', function(e) {
@@ -202,7 +231,10 @@ labor_ui <- function(id) {
                  tags$hr(style = "border-top: 2px solid #00b8d4; margin-top: 0; margin-bottom: 14px;"),
                  
                  # -------- GRÁFICO --------
-                 plotlyOutput(ns("plot"), height = "520px"),
+                 div(
+                   class = "plot-spinner",
+                   plotlyOutput(ns("plot"), height = "520px")
+                 ),
                  div(
                    style = "margin-top:30px;",
                    reactable::reactableOutput(ns("tabla_detalle"))
