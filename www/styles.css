@@ -399,11 +399,22 @@ body {
   }
 
   .landing-hero {
+    flex-direction: column;
+    align-items: center;
     gap: 32px;
     margin-bottom: 60px;
   }
 
+  .landing-hero-image {
+    max-width: 100%;
+    min-width: 0;
+    margin: 0 auto;
+  }
+
   .landing-hero-text {
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
     padding-top: 0;
   }
 
@@ -942,11 +953,25 @@ body {
     padding: 10px 20px;
     height: auto;
   }
+
+  .header-content {
+    grid-template-columns: auto 1fr auto;
+    column-gap: 12px;
+  }
+
+  .wb-logo {
+    height: 26px;
+  }
   
   .nav-menu {
     flex-direction: column;
     gap: 15px;
     align-items: flex-start;
+  }
+
+  .hamburger-dropdown {
+    width: min(240px, 90vw);
+    max-width: calc(100vw - 24px);
   }
   
   .page-title {
