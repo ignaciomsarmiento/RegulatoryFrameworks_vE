@@ -270,16 +270,18 @@ labor_server <- function(input, output, session) {
     )
   }
   apply_plot_font <- function(fig) {
-    fig %>% layout(
-      font = list(family = plotly_font_family),
-      title = list(
-        text = plot_title_text(),
-        x = 0.5,
-        xanchor = "center"
-      ),
-      annotations = plot_footer_annotations(),
-      margin = list(t = 60, b = 155)
-    )
+    fig %>%
+      plotly::style(hovertemplate = "%{x}<br>%{y:.2f}<extra>%{fullData.name}</extra>") %>%
+      layout(
+        font = list(family = plotly_font_family),
+        title = list(
+          text = plot_title_text(),
+          x = 0.5,
+          xanchor = "center"
+        ),
+        annotations = plot_footer_annotations(),
+        margin = list(t = 60, b = 155)
+      )
   }
   
   
@@ -656,20 +658,6 @@ labor_server <- function(input, output, session) {
     }
     build_component_subplot <- function(df, show_legend, y_axis_title, legend_order = component_legend_order) {
       fig <- plot_ly(type = "bar")
-      if (show_legend) {
-        for (type in legend_order) {
-          fig <- fig %>% add_trace(
-            x = NA,
-            y = NA,
-            name = type,
-            marker = list(color = component_palette[[type]]),
-            showlegend = TRUE,
-            legendgroup = type,
-            hoverinfo = "none",
-            visible = "legendonly"
-          )
-        }
-      }
       for (type in component_stack_order) {
         sub <- df %>% filter(Type == type)
         if (nrow(sub) == 0) {
@@ -681,8 +669,9 @@ labor_server <- function(input, output, session) {
           data = sub,
           name = type,
           marker = list(color = component_palette[[type]]),
-          showlegend = FALSE,
+          showlegend = show_legend,
           legendgroup = type,
+          legendrank = match(type, legend_order),
           hoverinfo = "y+name"
         )
       }
@@ -843,6 +832,65 @@ labor_server <- function(input, output, session) {
         "Other bonuses" = "#6F6779"
       )
       return(build_multicategory_stack(df, colors, y_axis_title))
+    }
+
+    if (compare_wages && groupA == "component" && group0 == "social") {
+      if (length(ns_variables$country_sel) != 1 || "All" %in% ns_variables$country_sel) {
+        return(NULL)
+      }
+
+      path_component <- paste0("data/non_salary/", paste0(groupE, "_all.rds"))
+      df <- readRDS(path_component) %>%
+        dplyr::filter(
+          wage %in% wage_filter,
+          country == ns_variables$country_sel
+        ) %>%
+        mutate(
+          Scenario = ifelse(grepl("_min$", min_max_total), "Min", "Max")
+        ) %>%
+        select(wage, Scenario, value)
+
+      if (nrow(df) == 0) {
+        showNotification("No Data for this combination.", type = "error")
+        return(NULL)
+      }
+
+      df <- df %>%
+        mutate(
+          wage = factor(wage, levels = wage_filter),
+          Scenario = factor(Scenario, levels = c("Min", "Max"))
+        ) %>%
+        arrange(Scenario, wage)
+
+      fig <- plot_ly(
+        data = df,
+        x = list(df$Scenario, df$wage),
+        y = ~value,
+        type = "bar",
+        marker = list(color = "#002244"),
+        showlegend = FALSE
+      ) %>%
+        layout(
+          paper_bgcolor = "rgba(0,0,0,0)",
+          plot_bgcolor  = "rgba(0,0,0,0)",
+          xaxis = list(
+            title = "",
+            type = "multicategory",
+            showgrid = FALSE,
+            zeroline = FALSE,
+            showline = FALSE
+          ),
+          yaxis = list(
+            title = y_axis_title,
+            showgrid = FALSE,
+            zeroline = FALSE,
+            showline = FALSE
+          )
+        )
+
+      fig <- apply_plot_font(fig)
+      fig <- fig %>% layout(annotations = plot_footer_annotations())
+      return(fig)
     }
     
     
