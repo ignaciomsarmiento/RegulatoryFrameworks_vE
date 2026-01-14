@@ -683,35 +683,38 @@ body {
 /* -------- LABOR -------- */
 .topic-card-image.labor-img {
   background-color: #024;
-  background-image: linear-gradient(
+  /*background-image: linear-gradient(
     to right,
     #AFB2B8 0%,
     #726AA8 40%,
     #335B8E 65%,
     #024 100%
   );
+  */
 }
 
 /* -------- MIN WAGES (base #A71261) -------- */
 .topic-card-image.minwage-img {
   background-color: #A71261;
-  background-image: linear-gradient(
+  /*background-image: linear-gradient(
     to right,
     #E9B7D3 0%,
     #C03A82 50%,
     #A71261 100%
   );
+  */
 }
 
 /* -------- BUSINESS TAXES (base #9D906C) -------- */
 .topic-card-image.btax-img {
   background-color: #9D906C;
-  background-image: linear-gradient(
+ /*background-image: linear-gradient(
     to right,
     #E6E0CF 0%,
     #B5AA8A 50%,
     #9D906C 100%
   );
+  */
 }
 
 /* Body largo + texto centrado */
