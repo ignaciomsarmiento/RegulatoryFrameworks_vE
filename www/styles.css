@@ -406,7 +406,10 @@ body {
   }
 
   .landing-hero-image {
-    max-width: 100%;
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: 520px;
+    height: clamp(280px, 70vw, 420px);
     min-width: 0;
     margin: 0 auto;
   }
