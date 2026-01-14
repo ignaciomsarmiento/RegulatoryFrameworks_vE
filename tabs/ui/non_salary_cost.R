@@ -12,7 +12,10 @@ labor_ui <- function(id) {
         opacity: 0.85;
       }
       .pill-button {
-        font-size: 10px;
+        font-size: 11px;
+      }
+      .subcomponent-btn {
+        font-size: 9px;
       }
       
       .component-btn.active {
@@ -90,8 +93,8 @@ labor_ui <- function(id) {
                           inputId = ns("compare_mode"),
                           label = NULL,
                           choices = c(
-                            "Across countries" = "country",
-                            "Within a country" = "wage"
+                            "ACROSS COUNTRIES" = "country",
+                            "WITHIN A COUNTRY" = "wage"
                           ),
                           selected = "country",
                           width = "100%"
