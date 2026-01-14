@@ -1,32 +1,57 @@
+# =============================================================================
+# labor_server_optimized.R - Versión optimizada del módulo server
+# =============================================================================
+# CAMBIOS PRINCIPALES:
+# 1. Eliminadas todas las llamadas a readRDS() y read_excel() dentro del server
+# 2. Se usan los datos pre-cargados en global.R mediante funciones helper:
+#    - get_group_data(name) en lugar de readRDS("data/non_salary/NAME_all.rds")
+#    - get_component_data(name) en lugar de readRDS("data/non_salary/NAME_component.rds")
+#    - get_excel_table(sheet) en lugar de read_excel("tables.xlsx", sheet=...)
+# 3. Las constantes vienen de global.R para evitar recrearlas por sesión
+#
+# REQUIERE: global.R debe estar cargado antes de este archivo
+# =============================================================================
+
 labor_server <- function(input, output, session) {
   
   # COLORS
-  
   # Total
 
   ns <- session$ns
-  tabla <- readRDS("data/non_salary/bonuses_and_benefits_component.rds")
   
-  # ---- Non Salary Tables and adding tenure  ----
-  df_non_salary <- readRDS("data/non_salary/1. total_non_salary_costs.rds")
-  wage_levels <- c("1sm", "2sm", "5sm", "10sm", "15sm")
-  wage_labels <- paste0(sub("sm", "", wage_levels), " MW")
-  wage_choices <- setNames(wage_levels, wage_labels)
+  # ============================================================================
+  # DATOS: Ahora vienen de global.R (pre-cargados)
+  # ============================================================================
+  # ANTES (lento - se ejecutaba por cada usuario):
+  #   tabla <- readRDS("data/non_salary/bonuses_and_benefits_component.rds")
+  #   df_non_salary <- readRDS("data/non_salary/1. total_non_salary_costs.rds")
+  #
+  # AHORA (rápido - solo referencias a datos ya cargados en global.R):
+  tabla <- DATA_TABLA
+  df_non_salary <- DATA_NON_SALARY
+  df_non_salary_payer <- DATA_NON_SALARY_PAYER
+  df_non_salary_component <- DATA_NON_SALARY_COMPONENT
   
+  # Constantes de global.R
+  wage_levels <- WAGE_LEVELS
+  wage_labels <- WAGE_LABELS
+  wage_choices <- WAGE_CHOICES
+  plotly_font_family <- PLOTLY_FONT_FAMILY
+  component_palette <- COMPONENT_PALETTE
+  component_stack_order <- COMPONENT_STACK_ORDER
+  component_legend_order <- COMPONENT_LEGEND_ORDER
+  bonus_palette <- BONUS_PALETTE
+  bonus_stack_order <- BONUS_STACK_ORDER
+  country_name_map <- COUNTRY_NAME_MAP
   
   # non_salary variables
-  ns_variables<-reactiveValues(
-    order_country=NULL,
-    country_sel="All",
-    countries=c("All",unique(df_non_salary$country)),
-    df_final=NULL,
-    df_final_tabla=NULL
+  ns_variables <- reactiveValues(
+    order_country = NULL,
+    country_sel = "All",
+    countries = COUNTRIES_LIST,
+    df_final = NULL,
+    df_final_tabla = NULL
   )
-  
-  
-  df_non_salary_payer <- readRDS("data/non_salary/2. total_ns_costs_by_payer.rds")
-  
-  df_non_salary_component <- readRDS("data/non_salary/total_ns_costs_by_component.rds")
   
   # ---- Selection Groups: Button results ----
   selected_group0 <- reactiveVal("all") # First Filter
@@ -60,127 +85,18 @@ labor_server <- function(input, output, session) {
     updateSelectizeInput(session, ns("country_selection_user"), selected = "All")
     shinyjs::runjs(sprintf("$('#%s').click();", ns("all")))
   }
-  plotly_font_family <- "National Park, 'Source Sans Pro', -apple-system, BlinkMacSystemFont, sans-serif"
-  component_palette <- c(
-    "Pension" = "#00C1FF",
-    "Health" = "#002244",
-    "Occupational Risk" = "#B9BAB5",
-    "Bonuses and Benefits" = "#335B8E",
-    "Payroll Taxes" = "#726AA8"
-  )
-  component_stack_order <- c(
-    "Pension",
-    "Health",
-    "Occupational Risk",
-    "Bonuses and Benefits",
-    "Payroll Taxes"
-  )
-  component_legend_order <- c(
-    "Bonuses and Benefits",
-    "Pension",
-    "Health",
-    "Occupational Risk",
-    "Payroll Taxes"
-  )
-  bonus_palette <- c(
-    "Annual and other periodic bonuses" = "#002244",
-    "Paid Leave" = "#8EA2BF",
-    "Unemployment Protection" = "#B9BAB5",
-    "Other bonuses" = "#6F6779"
-  )
-  bonus_stack_order <- c(
-    "Annual and other periodic bonuses",
-    "Paid Leave",
-    "Unemployment Protection",
-    "Other bonuses"
-  )
-  country_name_map <- c(
-    ARG = "Argentina",
-    BOL = "Bolivia",
-    BRA = "Brazil",
-    CHL = "Chile",
-    COL = "Colombia",
-    CRI = "Costa Rica",
-    DOM = "Dominican Republic",
-    ECU = "Ecuador",
-    ESP = "Spain",
-    SLV = "El Salvador",
-    GTM = "Guatemala",
-    HND = "Honduras",
-    MEX = "Mexico",
-    NIC = "Nicaragua",
-    PAN = "Panama",
-    PRY = "Paraguay",
-    PER = "Peru",
-    URY = "Uruguay",
-    US = "United States",
-    VEN = "Venezuela"
-  )
-  country_display_name <- function(country_code) {
-    if (is.null(country_code) || country_code == "") {
-      return(country_code)
-    }
-    code <- toupper(country_code)
-    mapped <- country_name_map[[code]]
-    if (!is.null(mapped)) {
-      return(mapped)
-    }
-    country_code
-  }
-  format_wage_label <- function(wage_code) {
-    if (is.null(wage_code) || length(wage_code) == 0) {
-      return(character(0))
-    }
-    wage_code <- wage_code[!is.na(wage_code)]
-    if (length(wage_code) == 0) {
-      return(character(0))
-    }
-    paste0(substr(wage_code, 1, nchar(wage_code) - 2), " MW")
-  }
-  format_wage_phrase <- function(wage_code) {
-    if (is.null(wage_code) || length(wage_code) == 0) {
-      return("selected minimum wage levels")
-    }
-    wage_code <- wage_code[!is.na(wage_code)]
-    if (length(wage_code) == 0) {
-      return("selected minimum wage levels")
-    }
-    if (length(wage_code) > 1) {
-      return("selected minimum wage levels")
-    }
-    wage_value <- suppressWarnings(as.integer(sub("sm", "", wage_code)))
-    wage_word <- switch(
-      as.character(wage_value),
-      "1" = "one",
-      "2" = "two",
-      "5" = "five",
-      "10" = "ten",
-      "15" = "fifteen",
-      as.character(wage_value)
-    )
-    if (is.na(wage_value)) {
-      return(format_wage_label(wage_code))
-    }
-    if (wage_value == 1) {
-      return(paste(wage_word, "minimum wage"))
-    }
-    paste(wage_word, "minimum wages")
-  }
+  
+  # Funciones helper - usan las de global.R
+  # country_display_name, format_wage_label, format_wage_phrase, format_country_phrase
+  # ya están definidas en global.R
+  
   safe_value <- function(value, fallback) {
     if (is.null(value) || length(value) == 0) {
       return(fallback)
     }
     value
   }
-  format_country_phrase <- function(countries) {
-    if (is.null(countries) || length(countries) == 0 || "All" %in% countries) {
-      return("across countries")
-    }
-    if (length(countries) == 1) {
-      return(paste0("in ", country_display_name(countries[1])))
-    }
-    "across selected countries"
-  }
+  
   plot_title_text <- function() {
     group0 <- safe_value(selected_group0(), "all")
     groupA <- safe_value(selected_groupA(), "total")
@@ -238,6 +154,7 @@ labor_server <- function(input, output, session) {
       " (%)"
     )
   }
+  
   y_axis_title_text <- function() {
     group0 <- safe_value(selected_group0(), "all")
 
@@ -261,7 +178,8 @@ labor_server <- function(input, output, session) {
       return("Payroll taxes as share of wages (%)")
     }
     "Non-salary costs as share of wages (%)"
-    }
+  }
+  
   plot_footer_annotations <- function() {
     access_date <- format(Sys.Date(), "%Y-%m-%d")
     list(
@@ -292,6 +210,7 @@ labor_server <- function(input, output, session) {
       )
     )
   }
+  
   apply_plot_font <- function(fig) {
     fig %>%
       plotly::style(hovertemplate = "%{x}<br>%{y:.2f}<extra>%{fullData.name}</extra>") %>%
@@ -523,12 +442,6 @@ labor_server <- function(input, output, session) {
     selected_groupB(selection)
     last_wage_selection(selection)
   })
-  
-  # observeEvent(input$btn_sm1,  { selected_groupB("1sm") })
-  # observeEvent(input$btn_sm2,  { selected_groupB("2sm") })
-  # observeEvent(input$btn_sm5,  { selected_groupB("5sm") })
-  # observeEvent(input$btn_sm10, { selected_groupB("10sm") })
-  # observeEvent(input$btn_sm15, { selected_groupB("15sm") })
   
   # ---- Components ----
   observeEvent(input$all_component,  { selected_groupC("all_component") })
@@ -770,6 +683,10 @@ labor_server <- function(input, output, session) {
         )
     }
 
+    # ========================================================================
+    # COMPARE WAGES CASES
+    # ========================================================================
+
     if (compare_wages && groupA == "total") {
       if (length(ns_variables$country_sel) != 1 || "All" %in% ns_variables$country_sel) {
         return(NULL)
@@ -786,8 +703,13 @@ labor_server <- function(input, output, session) {
           ) %>%
           select(wage, Scenario, value)
       } else {
-        path_component <- paste0("data/non_salary/", paste0(group0, "_all.rds"))
-        df <- readRDS(path_component) %>%
+        # OPTIMIZADO: get_group_data() en lugar de readRDS()
+        df <- get_group_data(group0)
+        if (is.null(df)) {
+          showNotification("Data not available for this selection.", type = "error")
+          return(NULL)
+        }
+        df <- df %>%
           dplyr::filter(
             wage %in% wage_filter,
             country == ns_variables$country_sel
@@ -880,8 +802,13 @@ labor_server <- function(input, output, session) {
         return(NULL)
       }
 
-      path_component <- paste0("data/non_salary/", paste0(group0, "_component.rds"))
-      df <- readRDS(path_component) %>%
+      # OPTIMIZADO: get_component_data() en lugar de readRDS()
+      df <- get_component_data("bonuses_and_benefits")
+      if (is.null(df)) {
+        showNotification("Data not available.", type = "error")
+        return(NULL)
+      }
+      df <- df %>%
         dplyr::filter(
           wage %in% wage_filter,
           country == ns_variables$country_sel
@@ -914,8 +841,13 @@ labor_server <- function(input, output, session) {
         return(NULL)
       }
 
-      path_component <- paste0("data/non_salary/", paste0(groupE, "_all.rds"))
-      df <- readRDS(path_component) %>%
+      # OPTIMIZADO: get_group_data() en lugar de readRDS()
+      df <- get_group_data(groupE)
+      if (is.null(df)) {
+        showNotification("Data not available.", type = "error")
+        return(NULL)
+      }
+      df <- df %>%
         dplyr::filter(
           wage %in% wage_filter,
           country == ns_variables$country_sel
@@ -1123,7 +1055,7 @@ labor_server <- function(input, output, session) {
             showlegend = FALSE
           ) %>%
             layout(
-              barmode = "stack",   # 🔥 CLAVE
+              barmode = "stack",
               
               paper_bgcolor = "rgba(0,0,0,0)",
               plot_bgcolor  = "rgba(0,0,0,0)",
@@ -1227,7 +1159,7 @@ labor_server <- function(input, output, session) {
           showlegend = FALSE
         ) %>%
           layout(
-            barmode = "stack",   # 🔥 CLAVE
+            barmode = "stack",
             
             paper_bgcolor = "rgba(0,0,0,0)",
             plot_bgcolor  = "rgba(0,0,0,0)",
@@ -1878,8 +1810,12 @@ labor_server <- function(input, output, session) {
     if ((group0!="all" | group0!="social") & groupA == "total" & length(ns_variables$country_sel)==1) {
     
     if(ns_variables$country_sel=="All"){
-        path_component=paste0("data/non_salary/",paste0(group0,"_all.rds"))
-        df=readRDS(path_component)
+        # OPTIMIZADO: get_group_data() en lugar de readRDS()
+        df <- get_group_data(group0)
+        if (is.null(df)) {
+          showNotification("Data not available.", type = "error")
+          return(NULL)
+        }
         df <- df %>%
           filter(
             wage %in% wage_filter
@@ -1906,8 +1842,6 @@ labor_server <- function(input, output, session) {
           )%>%
           arrange(t_min) %>%
           mutate(country = factor(country, levels = country))
-        
-        #ns_variables$order_country <- unique(as.character(df_wide$country))
         
         df_mm <- df_wide %>%
           tidyr::pivot_longer(
@@ -1982,8 +1916,12 @@ labor_server <- function(input, output, session) {
         return(apply_plot_font(fig))
     }
     else{
-        path_component=paste0("data/non_salary/",paste0(group0,"_all.rds"))
-        df=readRDS(path_component)
+        # OPTIMIZADO: get_group_data() en lugar de readRDS()
+        df <- get_group_data(group0)
+        if (is.null(df)) {
+          showNotification("Data not available.", type = "error")
+          return(NULL)
+        }
         df <- df %>%
           filter(
             wage %in% wage_filter,
@@ -2010,8 +1948,6 @@ labor_server <- function(input, output, session) {
           )%>%
           arrange(t_min) %>%
           mutate(country = factor(country, levels = country))
-        
-        #ns_variables$order_country <- unique(as.character(df_wide$country))
         
         df_mm <- df_wide %>%
           tidyr::pivot_longer(
@@ -2093,8 +2029,12 @@ labor_server <- function(input, output, session) {
         showNotification("Please select only countries.", type = "error")
         return(NULL)
       }
-        path_component=paste0("data/non_salary/",paste0(group0,"_all.rds"))
-        df=readRDS(path_component)
+        # OPTIMIZADO: get_group_data() en lugar de readRDS()
+        df <- get_group_data(group0)
+        if (is.null(df)) {
+          showNotification("Data not available.", type = "error")
+          return(NULL)
+        }
         df <- df %>%
           filter(
             wage %in% wage_filter,
@@ -2122,7 +2062,6 @@ labor_server <- function(input, output, session) {
           arrange(t_min) %>%
           mutate(country = factor(country, levels = country))
         
-        #ns_variables$order_country <- unique(as.character(df_wide$country))
         df_mm <- df_wide %>%
           tidyr::pivot_longer(
             cols = c(t_min, t_max),
@@ -2199,8 +2138,12 @@ labor_server <- function(input, output, session) {
     # ---- bonuses and benefits and Components ----
     
     if ((group0=="bonuses_and_benefits") & groupA == "component" & groupD == "all_bonuses") {
-      path_component=paste0("data/non_salary/",paste0(group0,"_component.rds"))
-      df=readRDS(path_component)
+      # OPTIMIZADO: get_component_data() en lugar de readRDS()
+      df <- get_component_data("bonuses_and_benefits")
+      if (is.null(df)) {
+        showNotification("Data not available.", type = "error")
+        return(NULL)
+      }
       df_long <- df  %>%
         filter(
           wage %in% wage_filter
@@ -2312,8 +2255,12 @@ labor_server <- function(input, output, session) {
       
       if(ns_variables$country_sel=="All"){
         if(groupC=="bonuses_and_benefits" & groupD!="all_bonuses"){
-          path_component=paste0("data/non_salary/",paste0(groupC,"_component.rds"))
-          df=readRDS(path_component)
+          # OPTIMIZADO: get_component_data() en lugar de readRDS()
+          df <- get_component_data("bonuses_and_benefits")
+          if (is.null(df)) {
+            showNotification("Data not available.", type = "error")
+            return(NULL)
+          }
           df <- df %>%
             filter(
               wage %in% wage_filter,
@@ -2326,8 +2273,12 @@ labor_server <- function(input, output, session) {
             )
           ns_variables$countries=c("All",unique(df$country))
         } else if(groupC=="social"){
-          path_component=paste0("data/non_salary/",paste0(groupE,"_all.rds"))
-          df=readRDS(path_component)
+          # OPTIMIZADO: get_group_data() en lugar de readRDS()
+          df <- get_group_data(groupE)
+          if (is.null(df)) {
+            showNotification("Data not available.", type = "error")
+            return(NULL)
+          }
           df <- df %>%
             filter(
               wage %in% wage_filter
@@ -2341,8 +2292,12 @@ labor_server <- function(input, output, session) {
         } else if (!is.null(input$component_type) &&
                    length(input$component_type) > 0 &&
                    identical(input$component_type, "Total")){
-            path_component=paste0("data/non_salary/",paste0(groupC,"_all.rds"))
-            df=readRDS(path_component)
+            # OPTIMIZADO: get_group_data() en lugar de readRDS()
+            df <- get_group_data(groupC)
+            if (is.null(df)) {
+              showNotification("Data not available.", type = "error")
+              return(NULL)
+            }
             df <- df %>%
               filter(
                 wage %in% wage_filter
@@ -2355,7 +2310,7 @@ labor_server <- function(input, output, session) {
             ns_variables$countries=c("All",unique(df$country))
         }
         
-        if (nrow(df) == 0) {
+        if (is.null(df) || nrow(df) == 0) {
           showNotification("No Data for this combination.", type = "error")
           return(NULL)
         }
@@ -2368,8 +2323,6 @@ labor_server <- function(input, output, session) {
           )%>%
           arrange(t_min) %>%
           mutate(country = factor(country, levels = country))
-        
-        #ns_variables$order_country <- unique(as.character(df_wide$country))
         
         df_mm <- df_wide %>%
           tidyr::pivot_longer(
@@ -2445,8 +2398,12 @@ labor_server <- function(input, output, session) {
       }
       else{
         if(groupC=="bonuses_and_benefits" & groupD!="all_bonuses"){
-          path_component=paste0("data/non_salary/",paste0(groupC,"_component.rds"))
-          df=readRDS(path_component)
+          # OPTIMIZADO
+          df <- get_component_data("bonuses_and_benefits")
+          if (is.null(df)) {
+            showNotification("Data not available.", type = "error")
+            return(NULL)
+          }
           df <- df %>%
             filter(
               wage %in% wage_filter,
@@ -2459,8 +2416,12 @@ labor_server <- function(input, output, session) {
               type = ifelse(grepl("_min$", min_max_component), "Min", "Max")
             )
         } else if(groupC=="social"){
-          path_component=paste0("data/non_salary/",paste0(groupE,"_all.rds"))
-          df=readRDS(path_component)
+          # OPTIMIZADO
+          df <- get_group_data(groupE)
+          if (is.null(df)) {
+            showNotification("Data not available.", type = "error")
+            return(NULL)
+          }
           df <- df %>%
             filter(
               wage %in% wage_filter,
@@ -2474,8 +2435,12 @@ labor_server <- function(input, output, session) {
         } else if (!is.null(input$component_type) &&
                    length(input$component_type) > 0 &&
                    identical(input$component_type, "Total")){
-            path_component=paste0("data/non_salary/",paste0(groupC,"_all.rds"))
-            df=readRDS(path_component)
+            # OPTIMIZADO
+            df <- get_group_data(groupC)
+            if (is.null(df)) {
+              showNotification("Data not available.", type = "error")
+              return(NULL)
+            }
             df <- df %>%
               filter(
                 wage %in% wage_filter,
@@ -2487,7 +2452,7 @@ labor_server <- function(input, output, session) {
                 type = ifelse(grepl("_min$", min_max_total), "Min", "Max")
               )
         }
-        if (nrow(df) == 0) {
+        if (is.null(df) || nrow(df) == 0) {
           showNotification("No Data for this combination.", type = "error")
           return(NULL)
         }
@@ -2501,8 +2466,6 @@ labor_server <- function(input, output, session) {
           )%>%
           arrange(t_min) %>%
           mutate(country = factor(country, levels = country))
-        
-        #ns_variables$order_country <- unique(as.character(df_wide$country))
         
         df_mm <- df_wide %>%
           tidyr::pivot_longer(
@@ -2585,8 +2548,12 @@ labor_server <- function(input, output, session) {
         return(NULL)
       }
       if(groupC=="bonuses_and_benefits" & groupD!="all_bonuses"){
-        path_component=paste0("data/non_salary/",paste0(groupC,"_component.rds"))
-        df=readRDS(path_component)
+        # OPTIMIZADO
+        df <- get_component_data("bonuses_and_benefits")
+        if (is.null(df)) {
+          showNotification("Data not available.", type = "error")
+          return(NULL)
+        }
         df <- df %>%
           filter(
             wage %in% wage_filter,
@@ -2599,8 +2566,12 @@ labor_server <- function(input, output, session) {
             type = ifelse(grepl("_min$", min_max_component), "Min", "Max")
           )
       } else if(groupC=="social"){
-        path_component=paste0("data/non_salary/",paste0(groupE,"_component.rds"))
-        df=readRDS(path_component)
+        # OPTIMIZADO
+        df <- get_component_data(groupE)
+        if (is.null(df)) {
+          showNotification("Data not available.", type = "error")
+          return(NULL)
+        }
         df <- df %>%
           filter(
             wage %in% wage_filter,
@@ -2615,8 +2586,12 @@ labor_server <- function(input, output, session) {
       } else if (!is.null(input$component_type) &&
                  length(input$component_type) > 0 &&
                  identical(input$component_type, "Total")){
-          path_component=paste0("data/non_salary/",paste0(groupC,"_all.rds"))
-          df=readRDS(path_component)
+          # OPTIMIZADO
+          df <- get_group_data(groupC)
+          if (is.null(df)) {
+            showNotification("Data not available.", type = "error")
+            return(NULL)
+          }
           df <- df %>%
             filter(
               wage %in% wage_filter,
@@ -2628,7 +2603,7 @@ labor_server <- function(input, output, session) {
               type = ifelse(grepl("_min$", min_max_total), "Min", "Max")
             )
       }
-      if (nrow(df) == 0) {
+      if (is.null(df) || nrow(df) == 0) {
         showNotification("No Data for this combination.", type = "error")
         return(NULL)
       }
@@ -2643,7 +2618,6 @@ labor_server <- function(input, output, session) {
         arrange(t_min) %>%
         mutate(country = factor(country, levels = country))
       
-      #ns_variables$order_country <- unique(as.character(df_wide$country))
       df_mm <- df_wide %>%
         tidyr::pivot_longer(
           cols = c(t_min, t_max),
@@ -2720,6 +2694,14 @@ labor_server <- function(input, output, session) {
   })
   
   
+  # ============================================================================
+  # RENDER REACTABLE - OPTIMIZADO
+  # ============================================================================
+  # CAMBIO PRINCIPAL:
+  # ANTES:  data <- read_excel("data/non_salary/tables.xlsx", sheet = "TL All B")
+  # AHORA:  data <- get_excel_table("TL All B")
+  # ============================================================================
+  
   output$tabla_detalle<-reactable::renderReactable({
     table_visible(FALSE)
     ns_variables$df_final_tabla <- NULL
@@ -2740,80 +2722,92 @@ labor_server <- function(input, output, session) {
         return()
       }
       else if (groupA== "component" & groupC=="bonuses_and_benefits" & groupD=="all_bonuses"){
-        data <- read_excel("data/non_salary/tables.xlsx", sheet = "TL All B")
-        data <- as.data.frame(data)
-        if(!"All" %in% con_sel){
-          data=data %>% dplyr::filter(Country %in% con_sel)
+        # OPTIMIZADO: get_excel_table() en lugar de read_excel()
+        data <- get_excel_table("TL All B")
+        if (!is.null(data)) {
+          data <- as.data.frame(data)
+          if(!"All" %in% con_sel){
+            data=data %>% dplyr::filter(Country %in% con_sel)
+          }
+          ns_variables$df_final_tabla=data
         }
-        ns_variables$df_final_tabla=data
-        
       }
       else if (groupA== "component" & groupC=="bonuses_and_benefits" & groupD=="ab"){
-        
-        data <- read_excel("data/non_salary/tables.xlsx", sheet = "TL ab")
-        data <- as.data.frame(data)
-        
-        if(!"All" %in% con_sel){
-          data=data %>% dplyr::filter(Country %in% con_sel)
+        # OPTIMIZADO
+        data <- get_excel_table("TL ab")
+        if (!is.null(data)) {
+          data <- as.data.frame(data)
+          if(!"All" %in% con_sel){
+            data=data %>% dplyr::filter(Country %in% con_sel)
+          }
+          ns_variables$df_final_tabla=data
         }
-        ns_variables$df_final_tabla=data
       }
       else if (groupA== "component" & groupC=="bonuses_and_benefits" & groupD=="pl"){
-        
-        data <- read_excel("data/non_salary/tables.xlsx", sheet = "TL pl")
-        data <- as.data.frame(data)
-        
-        if(!"All" %in% con_sel){
-          data=data %>% dplyr::filter(Country %in% con_sel)
+        # OPTIMIZADO
+        data <- get_excel_table("TL pl")
+        if (!is.null(data)) {
+          data <- as.data.frame(data)
+          if(!"All" %in% con_sel){
+            data=data %>% dplyr::filter(Country %in% con_sel)
+          }
+          ns_variables$df_final_tabla=data
         }
-        ns_variables$df_final_tabla=data
       }
       else if (groupA== "component" & groupC=="bonuses_and_benefits" & groupD=="up"){
-        
-        data <- read_excel("data/non_salary/tables.xlsx", sheet = "TL up")
-        data <- as.data.frame(data)
-        
-        if(!"All" %in% con_sel){
-          data=data %>% dplyr::filter(Country %in% con_sel)
+        # OPTIMIZADO
+        data <- get_excel_table("TL up")
+        if (!is.null(data)) {
+          data <- as.data.frame(data)
+          if(!"All" %in% con_sel){
+            data=data %>% dplyr::filter(Country %in% con_sel)
+          }
+          ns_variables$df_final_tabla=data
         }
-        ns_variables$df_final_tabla=data
       }
       else if (groupA== "component" & groupC=="bonuses_and_benefits" & groupD=="ob"){
-        print("estoy aca")
-        data <- read_excel("data/non_salary/tables.xlsx", sheet = "TL Or")
-        data <- as.data.frame(data)
-        
-        if(!"All" %in% con_sel){
-          data=data %>% dplyr::filter(Country %in% con_sel)
+        # OPTIMIZADO
+        data <- get_excel_table("TL Or")
+        if (!is.null(data)) {
+          data <- as.data.frame(data)
+          if(!"All" %in% con_sel){
+            data=data %>% dplyr::filter(Country %in% con_sel)
+          }
+          ns_variables$df_final_tabla=data
         }
-        ns_variables$df_final_tabla=data
       }
       else if (groupA== "component" & groupE=="health"){
-  
-        data <- read_excel("data/non_salary/tables.xlsx", sheet = "TL H")
-        data <- as.data.frame(data)
-        if(!"All" %in% con_sel){
-          data=data %>% dplyr::filter(Country %in% con_sel)
+        # OPTIMIZADO
+        data <- get_excel_table("TL H")
+        if (!is.null(data)) {
+          data <- as.data.frame(data)
+          if(!"All" %in% con_sel){
+            data=data %>% dplyr::filter(Country %in% con_sel)
+          }
+          ns_variables$df_final_tabla=data
         }
-        ns_variables$df_final_tabla=data
       }
       else if (groupA== "component" & groupE=="payroll_taxes"){
-  
-        data <- read_excel("data/non_salary/tables.xlsx", sheet = "TL Pt")
-        data <- as.data.frame(data)
-        if(!"All" %in% con_sel){
-          data=data %>% dplyr::filter(Country %in% con_sel)
+        # OPTIMIZADO
+        data <- get_excel_table("TL Pt")
+        if (!is.null(data)) {
+          data <- as.data.frame(data)
+          if(!"All" %in% con_sel){
+            data=data %>% dplyr::filter(Country %in% con_sel)
+          }
+          ns_variables$df_final_tabla=data
         }
-        ns_variables$df_final_tabla=data
       }
       else if (groupA== "component" & groupE=="pensions"){
-  
-        data <- read_excel("data/non_salary/tables.xlsx", sheet = "TL All P")
-        data <- as.data.frame(data)
-        if(!"All" %in% con_sel){
-          data=data %>% dplyr::filter(Country %in% con_sel)
+        # OPTIMIZADO
+        data <- get_excel_table("TL All P")
+        if (!is.null(data)) {
+          data <- as.data.frame(data)
+          if(!"All" %in% con_sel){
+            data=data %>% dplyr::filter(Country %in% con_sel)
+          }
+          ns_variables$df_final_tabla=data
         }
-        ns_variables$df_final_tabla=data
       }
     
     if (is.null(data)) {
@@ -2831,7 +2825,7 @@ labor_server <- function(input, output, session) {
         maxWidth = 260,
         align = "left",
         style = list(
-          whiteSpace = "normal",     # permite texto multilínea
+          whiteSpace = "normal",
           lineHeight = "1.35",
           fontSize = "12px",
           padding = "6px",
@@ -2920,7 +2914,6 @@ labor_server <- function(input, output, session) {
         class = "horizontal-container",
         style = "display:flex; align-items:flex-start; justify-content:space-between; width:100%;",
         
-        # ---- titulo ----
         div(
           tags$div(
             "Social Security Contributions Components",
@@ -2928,7 +2921,6 @@ labor_server <- function(input, output, session) {
           )
         ),
         
-        # ---- botones a la izquierda ----
         div(
           class = "component-buttons-container",
           style = "display:flex; flex-wrap:wrap; gap:8px;",
@@ -2951,41 +2943,6 @@ labor_server <- function(input, output, session) {
           )
         )
       )
-      # div(
-      #   class = "horizontal-container",
-      #   style = "display:flex; align-items:center; justify-content:space-between; width:100%;",
-      #   
-      #   # ---- botones a la izquierda ----
-      #   div(
-      #     class = "component-buttons-container",
-      #     style = "display:flex; flex-wrap:wrap; gap:8px;",
-      #     
-      #     actionButton(
-      #       ns("all_component"),
-      #       "All",
-      #       class = "component-btn active"
-      #     ),
-      #     
-      #     actionButton(
-      #       ns("bonus"),
-      #       "Bonuses and Benefits",
-      #       class = "component-btn"
-      #     ),
-      #     
-      #     actionButton(
-      #       ns("social"),
-      #       "Social Security Contributions",
-      #       class = "component-btn"
-      #     ),
-      #     
-      #     
-      #     actionButton(
-      #       ns("payroll"),
-      #       "Payroll Taxes",
-      #       class = "component-btn"
-      #     )
-      #   )
-      # )
     }
   })
   
@@ -3009,7 +2966,6 @@ labor_server <- function(input, output, session) {
         class = "horizontal-container",
         style = "display:flex; align-items:flex-start; justify-content:space-between; width:100%;",
         
-        # ---- título ----
         div(
           tags$div(
             "Bonuses and Benefits Components",
@@ -3017,7 +2973,6 @@ labor_server <- function(input, output, session) {
           )
         ),
         
-        # ---- botones a la izquierda ----
         div(
           class = "component-buttons-container",
           style = "display:flex; flex-wrap:wrap; gap:8px;",
@@ -3054,100 +3009,6 @@ labor_server <- function(input, output, session) {
         )
       )
     }
-    
-    # if ((groupC != "bonuses_and_benefits" | groupC != "social") & groupA !="component") {
-    #   return(div(style="visibility:hidden;"))
-    # }
-    
-    # else if (groupC == "bonuses_and_benefits" & groupA =="component") {
-    #   div(
-    #     class = "horizontal-container",
-    #     style = "display:flex; align-items:center; justify-content:space-between; width:100%;",
-    #     
-    #     # ---- título ----
-    #     div(
-    #       tags$div(
-    #         "Bonuses and Benefits Components",
-    #         style = "font-weight: bold; color: #b0b0b0; font-size: 14px; margin-bottom: 5px;"
-    #       )
-    #     ),
-    #     
-    #     # ---- botones a la izquierda ----
-    #     div(
-    #       class = "component-buttons-container",
-    #       style = "display:flex; flex-wrap:wrap; gap:8px;",
-    #       
-    #       actionButton(
-    #         ns("all_bonuses"),
-    #         "All Bonuses",
-    #         class = "component-btn active"
-    #       ),
-    #       
-    #       actionButton(
-    #         ns("ab"),
-    #         "Annual and other bonuses",
-    #         class = "component-btn"
-    #       ),
-    #       
-    #       actionButton(
-    #         ns("pl"),
-    #         "Paid Leave",
-    #         class = "component-btn"
-    #       ),
-    #       
-    #       actionButton(
-    #         ns("up"),
-    #         "Unemployment Protection",
-    #         class = "component-btn"
-    #       ),
-    #       
-    #       actionButton(
-    #         ns("ob"),
-    #         "other bonuses and benefits",
-    #         class = "component-btn"
-    #       )
-    #     )
-    #   )
-    # }
-    # 
-    # else if (groupC == "social" & groupA =="component"){
-      # div(
-      #   class = "horizontal-container",
-      #   style = "display:flex; align-items:center; justify-content:space-between; width:100%;",
-      # 
-      #   # ---- titulo ----
-      #   div(
-      #     tags$div(
-      #       "Social Security Contributions",
-      #       style = "font-weight: bold; color: #b0b0b0; font-size: 14px; margin-bottom: 5px;"
-      #     )
-      #   ),
-      # 
-      #   # ---- botones a la izquierda ----
-      #   div(
-      #     class = "component-buttons-container",
-      #     style = "display:flex; flex-wrap:wrap; gap:8px;",
-      #     actionButton(
-      #       ns("pensions"),
-      #       "Pension",
-      #       class = "component-btn"
-      #     ),
-      # 
-      #     actionButton(
-      #       ns("health"),
-      #       "Health",
-      #       class = "component-btn"
-      #     ),
-      # 
-      #     actionButton(
-      #       ns("occupational_risk"),
-      #       "Occupational Risk",
-      #       class = "component-btn"
-      #     )
-      #   )
-      # )
-    # }
-    
   })
   
   
@@ -3183,4 +3044,3 @@ labor_server <- function(input, output, session) {
     contentType = "text/csv"
   )
 }
-
