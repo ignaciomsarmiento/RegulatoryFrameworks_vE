@@ -1,14 +1,6 @@
 # =============================================================================
-# labor_server_optimized.R - Versión optimizada del módulo server
+# labor_server.R - Versión optimizada del módulo server
 # =============================================================================
-# CAMBIOS PRINCIPALES:
-# 1. Eliminadas todas las llamadas a readRDS() y read_excel() dentro del server
-# 2. Se usan los datos pre-cargados en global.R mediante funciones helper:
-#    - get_group_data(name) en lugar de readRDS("data/non_salary/NAME_all.rds")
-#    - get_component_data(name) en lugar de readRDS("data/non_salary/NAME_component.rds")
-#    - get_excel_table(sheet) en lugar de read_excel("tables.xlsx", sheet=...)
-# 3. Las constantes vienen de global.R para evitar recrearlas por sesión
-#
 # REQUIERE: global.R debe estar cargado antes de este archivo
 # =============================================================================
 
