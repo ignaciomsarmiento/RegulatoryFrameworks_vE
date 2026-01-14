@@ -2963,7 +2963,7 @@ labor_server <- function(input, output, session) {
     tags$div(
       class = "option2-group",
       style = "display: flex; flex-direction: column; gap: 8px;",
-      tags$span("Explore by subcomponents:", style = "font-weight: bold; color: #b0b0b0; font-size: 14px;"),
+      tags$span("Explore by:", style = "font-weight: bold; color: #b0b0b0; font-size: 14px;"),
       if ("total" %in% valid_choices) option_button("btn_total", "TOTAL", "total", "Show total non-salary costs."),
       if ("payer" %in% valid_choices) option_button("btn_payer", "BY PAYER", "payer", "Split costs by payer (employer vs. employee)."),
       if ("component" %in% valid_choices && group0 != "social") {
